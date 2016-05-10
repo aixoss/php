@@ -84,6 +84,14 @@ MYSQLND_METHOD(mysqlnd_result_buffered_zval, initialize_result_set_rest)(MYSQLND
 }
 /* }}} */
 
+/* #if defined(_AIX51) && !defined(_AIX52) */
+#if defined(_AIX61)
+#if (__64BIT__)
+#define SIZE_MAX        UINT64_MAX
+#else
+#define SIZE_MAX        UINT32_MAX
+#endif
+#endif
 
 /* {{{ mysqlnd_result_buffered_c::initialize_result_set_rest */
 static enum_func_status
