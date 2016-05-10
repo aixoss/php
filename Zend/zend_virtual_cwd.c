@@ -58,6 +58,10 @@
 #include <fsio.h>
 #endif
 
+#ifdef _AIX
+#include <sys/vnode.h>
+#endif
+
 #ifndef HAVE_REALPATH
 #define realpath(x,y) strcpy(y,x)
 #endif
@@ -402,6 +406,104 @@ CWD_API int php_sys_stat_ex(const char *path, zend_stat_t *buf, int lstat) /* {{
 	return 0;
 }
 /* }}} */
+#endif
+
+#ifdef _AIX
+/*
+The AIX file operations accepts a regular fine name appended with a trailing
+slash.
+To ensure a consitent behavior on Linux and AIX, check if a path with a trailing
+slash is a directory and simulate Linux behavior if not.
+*/
+#define ERROR_IF_FILE_WITH_TRAILING_SLASH(path, retval, set_errno, retval_if_not_exists, errno_if_not_exists) \
+	if (path[strlen(path) - 1] == '/') {\
+		if (access(path, F_OK) == 0) {\
+			struct stat buf;\
+			if (stat(path, &buf) == 0 && buf.st_type != VDIR) {\
+				if (set_errno != -1) {\
+					errno = set_errno;\
+				}\
+				return retval;\
+			}\
+		}\
+		else if (errno_if_not_exists > 0) {\
+			errno = errno_if_not_exists;\
+			return retval_if_not_exists;\
+		}\
+	}
+
+CWD_API int stat_aix(const char *path, struct stat *buf) /* {{{ */
+{
+	ERROR_IF_FILE_WITH_TRAILING_SLASH(path, -1, ENOTDIR, 0, 0);
+	return stat(path, buf);
+}
+
+CWD_API int lstat_aix(const char *path, struct stat *buf) /* {{{ */
+{
+	ERROR_IF_FILE_WITH_TRAILING_SLASH(path, -1, ENOTDIR, 0, 0);
+	return lstat(path, buf);
+}
+
+CWD_API int rename_aix(const char *oldname, const char *newname) /* {{{ */
+{
+	ERROR_IF_FILE_WITH_TRAILING_SLASH(oldname, -1, ENOTDIR, 0, 0);
+	return rename(oldname, newname);
+}
+
+CWD_API int access_aix(const char *path, int mode) /* {{{ */
+{
+	ERROR_IF_FILE_WITH_TRAILING_SLASH(path, -1, ENOTDIR, 0, 0);
+	return access(path, mode);
+}
+
+CWD_API int unlink_aix(const char *path) /* {{{ */
+{
+	ERROR_IF_FILE_WITH_TRAILING_SLASH(path, -1, ENOTDIR, 0, 0);
+	return unlink(path);
+}
+
+CWD_API FILE *fopen_aix(const char *path, const char *type) /* {{{ */
+{
+	ERROR_IF_FILE_WITH_TRAILING_SLASH(path, 0, ENOTDIR, NULL, EISDIR);
+	return fopen(path, type);
+}
+
+CWD_API FILE *popen_aix(const char *path, const char *type) /* {{{ */
+{
+	ERROR_IF_FILE_WITH_TRAILING_SLASH(path, 0, ENOTDIR, NULL, EISDIR);
+	/*
+	On Linux, popen does not allow r and w simultaneously
+	*/
+	if (strchr(type, 'r') != NULL && strchr(type, 'w') != NULL) {
+		errno = EINVAL;
+		return NULL;
+	}
+	return popen(path, type);
+}
+
+CWD_API int open_aix(const char *path, int flag) /* {{{ */
+{
+	ERROR_IF_FILE_WITH_TRAILING_SLASH(path, 0, ENOTDIR, -1, EISDIR);
+	return open(path, flag);
+}
+
+CWD_API int open_mode_aix(const char *path, int flag, mode_t mode) /* {{{ */
+{
+	ERROR_IF_FILE_WITH_TRAILING_SLASH(path, 0, ENOTDIR, -1, EISDIR);
+	return open(path, flag, mode);
+}
+
+CWD_API int creat_aix(const char *path, mode_t mode) /* {{{ */
+{
+	ERROR_IF_FILE_WITH_TRAILING_SLASH(path, 0, ENOTDIR, -1, EISDIR);
+	return creat(path, mode);
+}
+
+CWD_API int utime_aix(const char *path, const struct utimbuf *times) /* {{{ */
+{
+	ERROR_IF_FILE_WITH_TRAILING_SLASH(path, -1, ENOTDIR, 0, 0);
+	return utime(path, times);
+}
 #endif
 
 static int php_is_dir_ok(const cwd_state *state)  /* {{{ */

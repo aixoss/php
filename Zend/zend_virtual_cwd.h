@@ -129,11 +129,31 @@ typedef unsigned short mode_t;
 #	define CWD_API
 #endif
 
+#ifdef _AIX
+CWD_API int stat_aix(const char *path, struct stat *buf);
+CWD_API int lstat_aix(const char *path, struct stat *buf);
+CWD_API int rename_aix(const char *oldname, const char *newname);
+CWD_API int access_aix(const char *path, int mode);
+CWD_API int unlink_aix(const char *path);
+CWD_API FILE *fopen_aix(const char *path, const char *type);
+CWD_API int open_aix(const char *path, int flag);
+CWD_API int open_mode_aix(const char *path, int flag, mode_t mode);
+CWD_API int creat_aix(const char *path, mode_t mode);
+CWD_API int utime_aix(const char *path, const struct utimbuf *times);
+CWD_API FILE *popen_aix(const char *path, const char *type);
+#endif
+
 #ifdef ZEND_WIN32
 CWD_API int php_sys_stat_ex(const char *path, zend_stat_t *buf, int lstat);
 # define php_sys_stat(path, buf) php_sys_stat_ex(path, buf, 0)
 # define php_sys_lstat(path, buf) php_sys_stat_ex(path, buf, 1)
 CWD_API int php_sys_readlink(const char *link, char *target, size_t target_len);
+#elif defined(_AIX)
+# define php_sys_stat(path, buf) stat_aix(path, buf)
+# define php_sys_lstat(path, buf) lstat_aix(path, buf)
+# ifdef HAVE_SYMLINK
+# define php_sys_readlink(link, target, target_len) readlink(link, target, target_len)
+# endif
 #else
 # define php_sys_stat stat
 # define php_sys_lstat lstat
@@ -290,14 +310,23 @@ CWD_API realpath_cache_bucket** realpath_cache_get_buckets(void);
 #else
 
 #define VCWD_GETCWD(buff, size) getcwd(buff, size)
-#define VCWD_FOPEN(path, mode)  fopen(path, mode)
-#define VCWD_OPEN(path, flags) open(path, flags)
-#define VCWD_OPEN_MODE(path, flags, mode)	open(path, flags, mode)
-#define VCWD_CREAT(path, mode) creat(path, mode)
+#ifdef _AIX
+# define VCWD_FOPEN(path, mode)  fopen_aix(path, mode)
+# define VCWD_OPEN(path, flags) open_aix(path, flags)
+# define VCWD_OPEN_MODE(path, flags, mode)	open_mode_aix(path, flags, mode)
+# define VCWD_CREAT(path, mode) creat_aix(path, mode)
+#else
+# define VCWD_FOPEN(path, mode)  fopen(path, mode)
+# define VCWD_OPEN(path, flags) open(path, flags)
+# define VCWD_OPEN_MODE(path, flags, mode)	open(path, flags, mode)
+# define VCWD_CREAT(path, mode) creat(path, mode)
+#endif
 /* rename on windows will fail if newname already exists.
    MoveFileEx has to be used */
 #if defined(ZEND_WIN32)
 # define VCWD_RENAME(oldname, newname) (MoveFileEx(oldname, newname, MOVEFILE_REPLACE_EXISTING|MOVEFILE_COPY_ALLOWED) == 0 ? -1 : 0)
+#elif defined(_AIX)
+# define VCWD_RENAME(oldname, newname) rename_aix(oldname, newname)
 #else
 # define VCWD_RENAME(oldname, newname) rename(oldname, newname)
 #endif
@@ -305,14 +334,25 @@ CWD_API realpath_cache_bucket** realpath_cache_get_buckets(void);
 #define VCWD_CHDIR_FILE(path) virtual_chdir_file(path, chdir)
 #define VCWD_GETWD(buf) getwd(buf)
 #define VCWD_STAT(path, buff) php_sys_stat(path, buff)
-#define VCWD_LSTAT(path, buff) lstat(path, buff)
-#define VCWD_UNLINK(path) unlink(path)
+#if defined(_AIX)
+# define VCWD_LSTAT(path, buf) lstat_aix(path, buf)
+# define VCWD_UNLINK(path) unlink_aix(path)
+#else
+# define VCWD_LSTAT(path, buff) lstat(path, buff)
+# define VCWD_UNLINK(path) unlink(path)
+#endif
 #define VCWD_MKDIR(pathname, mode) mkdir(pathname, mode)
 #define VCWD_RMDIR(pathname) rmdir(pathname)
 #define VCWD_OPENDIR(pathname) opendir(pathname)
-#define VCWD_POPEN(command, type) popen(command, type)
+#ifdef _AIX
+# define VCWD_POPEN(command, type) popen_aix(command, type)
+#else
+# define VCWD_POPEN(command, type) popen(command, type)
+#endif
 #if defined(ZEND_WIN32)
 #define VCWD_ACCESS(pathname, mode) tsrm_win32_access(pathname, mode)
+#elif defined(_AIX)
+# define VCWD_ACCESS(pathname, mode) access_aix(pathname, mode)
 #else
 #define VCWD_ACCESS(pathname, mode) access(pathname, mode)
 #endif
@@ -322,6 +362,8 @@ CWD_API realpath_cache_bucket** realpath_cache_get_buckets(void);
 #if HAVE_UTIME
 # ifdef ZEND_WIN32
 #  define VCWD_UTIME(path, time) win32_utime(path, time)
+# elif defined(_AIX)
+#  define VCWD_UTIME(path, time) utime_aix(path, time)
 # else
 #  define VCWD_UTIME(path, time) utime(path, time)
 # endif

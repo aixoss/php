@@ -988,7 +988,23 @@ PHPAPI php_stream *_php_stream_fopen(const char *filename, const char *mode, zen
 		}
 	}
 
+#ifdef _AIX
+	/*
+	On AIX, open() does not raise an error if the file name ends with a slash, it opens/creates
+	the file without the trailing slash.
+	For consistency with Linux, check if the name ends with a slash and simulate Linux behavior
+	in this case.
+	*/
+	if (realpath[strlen(realpath) - 1] == '/') {
+		fd = -1;
+		errno = EISDIR;	
+	}
+	else {
+		fd = open(realpath, open_flags, 0666);
+	}
+#else
 	fd = open(realpath, open_flags, 0666);
+#endif
 
 	if (fd != -1)	{
 
