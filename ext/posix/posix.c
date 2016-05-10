@@ -1395,6 +1395,18 @@ PHP_FUNCTION(posix_setrlimit)
 		RETURN_FALSE;
 	}
 
+#if defined(_AIX)
+	/*
+	On AIX, when cur > max setrlimit returns 0 and sets softlimit and hardlimit to max,
+	instead of returning -1, so we need to check the values to reproduce the same behavior
+	as setrlimit on Linux.
+	*/
+	if (cur > max) {
+		POSIX_G(last_error) = EINVAL;
+		RETURN_FALSE;
+	}
+#endif
+
 	rl.rlim_cur = cur;
 	rl.rlim_max = max;
 
