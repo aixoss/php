@@ -3955,6 +3955,17 @@ PHP_FUNCTION(ip2long)
 	if (addr_len == 0 || inet_pton(AF_INET, addr, &ip) != 1) {
 		RETURN_FALSE;
 	}
+#ifdef _AIX
+	/*
+	AIX accepts IP strings with excedentary 0 (192.168.042.42 will be treated as
+	192.168.42.42), while Linux don't.
+	For consistency, we convert back the IP to a string and check if it is Ãequal to
+	the original string. If not, the IP should be considered invalid.
+	*/
+	if (strcmp(addr, inet_ntoa(ip)) != 0) {
+		RETURN_FALSE;
+	}
+#endif
 	RETURN_LONG(ntohl(ip.s_addr));
 #else
 	if (addr_len == 0 || (ip = inet_addr(addr)) == INADDR_NONE) {
@@ -5560,6 +5571,15 @@ PHP_FUNCTION(getservbyname)
 
 	serv = getservbyname(name, proto);
 
+#if defined(_AIX)
+	/*
+        On AIX, imap is only known as imap2 in /etc/services, while on Linux imap is an alias for imap2.
+        If a request for imap gives no result, we try again with imap2.
+        */
+	if (serv == NULL && strcmp(name,  "imap") == 0) {
+		serv = getservbyname("imap2", proto);
+	}
+#endif
 	if (serv == NULL) {
 		RETURN_FALSE;
 	}
